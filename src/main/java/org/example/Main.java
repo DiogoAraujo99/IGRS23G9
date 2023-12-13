@@ -19,25 +19,36 @@ public class Main extends SipServlet {
 
     private static final long serialVersionUID = 646549516541L;
     private static Map<String, String> registrarDB = new HashMap<>();
+    private static Map<String, UserStatus> registrarDBStatus = new HashMap<>();
     private static SipFactory factory;
 
     public Main() {
         super();
         registrarDB = new HashMap<>();
+        registrarDBStatus = new HashMap<>();
     }
 
     public void init() {
          factory = (SipFactory) getServletContext().getAttribute(SIP_FACTORY);
     }
 
+
     @Override
     protected void doRegister(SipServletRequest req) throws ServletException, IOException {
-        super.doRegister(req);
         String aor = getSIPuri(req.getHeader("To"));
-        String contact = getSIPuriPort(req.getHeader("Contact"));
-        registrarDB.put(aor, contact);
-        SipServletResponse response = req.createResponse(200);
-        response.send();
+
+        if(registrarDB.containsKey(aor)) {
+            registrarDB.remove(aor);
+            registrarDBStatus.remove(aor);
+            SipServletResponse response = req.createResponse(200);
+            response.send();
+        } else {
+            String contact = getSIPuriPort(req.getHeader("Contact"));
+            registrarDB.put(aor, contact);
+            registrarDBStatus.put(aor, UserStatus.AVAILABLE);
+            SipServletResponse response = req.createResponse(200);
+            response.send();
+        }
 
         log("REGISTER (IGRS23G9):****");
         showDBContent();
@@ -45,22 +56,44 @@ public class Main extends SipServlet {
     }
 
 
-
     @Override
     protected void doInvite(SipServletRequest req) throws ServletException, IOException {
-        super.doInvite(req);
         log("INVITE (IGRS23G9):****");
         showDBContent();
         log("INVITE (IGRS23G9):****");
 
         String aor = getSIPuri(req.getHeader("To"));
-        String domain = aor.substring(aor.indexOf('@') + 1);
+
+        if (aor.equals("sip:chat@acme.pt")) {
+            String from  = getSIPuri("From");
+            String callerDomain = getDomain(from);
+
+            if(!callerDomain.equals("acme.pt")) {
+                SipServletResponse response = req.createResponse(404, "CONFERENCE_SERVICE_NOT_AVAILABLE");
+                response.send();
+                return;
+            }
+
+            registrarDBStatus.put(aor, UserStatus.CONFERENCE);
+            Proxy proxy = req.getProxy();
+            proxy.proxyTo(req.getRequestURI());
+
+        }
+
+
+        String domain = getDomain(aor);
         log(domain);
-        if (domain.equals("a.pt")) {
+        if (domain.equals("acme.pt")) {
             if (!registrarDB.containsKey(aor)) {
-                SipServletResponse response = req.createResponse(404);
+                SipServletResponse response = req.createResponse(404, "USER_DOEST_REGISTERED");
                 response.send();
             } else {
+                UserStatus userStatus = registrarDBStatus.get(aor);
+                if (userStatus.equals(UserStatus.AVAILABLE)) {
+                    SipServletResponse response = req.createResponse(404, "USER_NOT_AVAILABLE");
+                    response.send();
+                    return;
+                }
                 Proxy proxy = req.getProxy();
                 proxy.setRecordRoute(false);
                 proxy.setSupervised(false);
@@ -71,15 +104,18 @@ public class Main extends SipServlet {
             Proxy proxy = req.getProxy();
             proxy.proxyTo(req.getRequestURI());
         }
+    }
 
-//        if (!registrarDB.containsKey(aor)) {
-//            SipServletResponse response = req.createResponse(404);
-//            response.send();
-//        } else {
-//            SipServletResponse response = req.createResponse(300);
-//            response.setHeader("Contact", registrarDB.get(aor));
-//            response.send();
-//        }
+    @Override
+    protected void doBye(SipServletRequest req) throws ServletException, IOException {
+        String aor = getSIPuri(req.getHeader("To"));
+        registrarDBStatus.put(aor, UserStatus.AVAILABLE);
+
+        log("BYE (IGRS23G9):****");
+    }
+
+    private static String getDomain(String aor) {
+        return aor.substring(aor.indexOf('@') + 1);
     }
 
     private String getSIPuri(String uri) {
@@ -102,5 +138,10 @@ public class Main extends SipServlet {
             Map.Entry<String, String> next = iterator.next();
             System.out.println(next.getKey() + " = " + next.getValue());
         }
+    }
+
+
+    enum UserStatus {
+        AVAILABLE, BUSY, CONFERENCE
     }
 }

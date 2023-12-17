@@ -36,6 +36,13 @@ public class Main extends SipServlet {
     @Override
     protected void doRegister(SipServletRequest req) throws ServletException, IOException {
         String aor = getSIPuri(req.getHeader("To"));
+        String domain  = getDomain(aor);
+
+        if (!domain.equals("acme.pt")) {
+            SipServletResponse response = req.createResponse(404, "CAN_NOT_REGISTER_WITH_THIS_DOMAIN");
+            response.send();
+            return;
+        }
 
         if(registrarDB.containsKey(aor)) {
             registrarDB.remove(aor);
@@ -76,6 +83,40 @@ public class Main extends SipServlet {
 
             registrarDBStatus.put(aor, UserStatus.CONFERENCE);
             Proxy proxy = req.getProxy();
+            proxy.setRecordRoute(false);
+            proxy.setSupervised(false);
+            URI toContact = factory.createURI("sip:sala@acme.pt:5070");
+            proxy.proxyTo(toContact);
+
+        }
+
+        //TODO: Validar se precisa colocar sip: a frente da aor
+        if (aor.equals("gofind@acme.pt")) {
+            String from  = getSIPuri("From");
+            String callerDomain = getDomain(from);
+
+            if(!callerDomain.equals("acme.pt")) {
+                SipServletResponse response = req.createResponse(404, "SERVICE_NOT_AVAILABLE");
+                response.send();
+                return;
+            }
+
+            if(registrarDB.get(aor) == null) {
+                SipServletResponse response = req.createResponse(404, "USER_NOT_REGISTERED");
+                response.send();
+                return;
+            }
+
+            UserStatus userStatus = registrarDBStatus.get(aor);
+            if (!userStatus.equals(UserStatus.AVAILABLE)) {
+                SipServletResponse response = req.createResponse(404, "USER_NOT_AVAILABLE_USER_STATE:" + userStatus.name());
+                response.send();
+                return;
+            }
+
+
+            registrarDBStatus.put(aor, UserStatus.CONFERENCE);
+            Proxy proxy = req.getProxy();
             proxy.proxyTo(req.getRequestURI());
 
         }
@@ -94,6 +135,10 @@ public class Main extends SipServlet {
                     response.send();
                     return;
                 }
+
+                String from  = getSIPuri("From");
+                registrarDBStatus.put(from, UserStatus.BUSY);
+                registrarDBStatus.put(aor, UserStatus.BUSY);
                 Proxy proxy = req.getProxy();
                 proxy.setRecordRoute(false);
                 proxy.setSupervised(false);
@@ -101,8 +146,8 @@ public class Main extends SipServlet {
                 proxy.proxyTo(toContact);
             }
         } else {
-            Proxy proxy = req.getProxy();
-            proxy.proxyTo(req.getRequestURI());
+            SipServletResponse response = req.createResponse(404, "NOT_VALID_DOMAIN");
+            response.send();
         }
     }
 

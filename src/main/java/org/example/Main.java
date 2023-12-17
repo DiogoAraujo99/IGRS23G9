@@ -70,9 +70,9 @@ public class Main extends SipServlet {
         log("INVITE (IGRS23G9):****");
 
         String aor = getSIPuri(req.getHeader("To"));
+        String from  = getSIPuri(req.getHeader("From"));
 
         if (aor.equals("sip:chat@acme.pt")) {
-            String from  = getSIPuri("From");
             String callerDomain = getDomain(from);
 
             if(!callerDomain.equals("acme.pt")) {
@@ -87,12 +87,11 @@ public class Main extends SipServlet {
             proxy.setSupervised(false);
             URI toContact = factory.createURI("sip:sala@acme.pt:5070");
             proxy.proxyTo(toContact);
-
+            return;
         }
 
         //TODO: Validar se precisa colocar sip: a frente da aor
         if (aor.equals("gofind@acme.pt")) {
-            String from  = getSIPuri("From");
             String callerDomain = getDomain(from);
 
             if(!callerDomain.equals("acme.pt")) {
@@ -118,6 +117,7 @@ public class Main extends SipServlet {
             registrarDBStatus.put(aor, UserStatus.CONFERENCE);
             Proxy proxy = req.getProxy();
             proxy.proxyTo(req.getRequestURI());
+            return;
 
         }
 
@@ -136,7 +136,6 @@ public class Main extends SipServlet {
                     return;
                 }
 
-                String from  = getSIPuri("From");
                 registrarDBStatus.put(from, UserStatus.BUSY);
                 registrarDBStatus.put(aor, UserStatus.BUSY);
                 Proxy proxy = req.getProxy();
